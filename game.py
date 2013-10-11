@@ -3,16 +3,18 @@ import pyglet
 from pyglet.window import key
 from core import GameElement
 import sys
+import random
 
 #### DO NOT TOUCH ####
 GAME_BOARD = None
 DEBUG = False
 KEYBOARD = None
 PLAYER = None
+GUARD = None
 ######################
 
 GAME_WIDTH = 10
-GAME_HEIGHT = 10
+GAME_HEIGHT = 7
 
 #### Put class definitions here ####
 pass
@@ -22,6 +24,16 @@ class Wall(GameElement):
     IMAGE = "StoneBlock"
     SOLID = True
     COLLECTIBLE = False
+
+class FakeWall(GameElement):
+    IMAGE = "StoneBlock"
+    SOLID = False
+    COLLECTIBLE = False
+
+    def interact(self, player):
+
+        draw_museum()
+        GAME_BOARD.draw_msg("You picked the lock on the prison gate. Looks like pretty princess crowns are useful after all.")
 
 class Tree(GameElement):
     IMAGE = "TreeUgly"
@@ -44,7 +56,7 @@ class DoorClosed(GameElement):
 
     def interact(self, player):
         
-        if len(player.inventory.get('keys', []))> 0:
+        if len(player.inventory.get('keys'))> 0:
             self.SOLID = False
             
             GAME_BOARD.draw_msg("You stealthily opened a door with your stolen key!")
@@ -58,18 +70,69 @@ class Bug(GameElement):
     COLLECTIBLE = True
     
     def interact(self, player):
-        player.inventory['bugs'] = []
+        #player.inventory['bugs'] = []
         
-        if len(player.inventory.get('keys', []))> 0:
+        if len(player.inventory.get('keys'))> 0:
             self.SOLID = False
-            bugs = player.inventory.get('bugs', [])
-            bugs.append(self)
+            # bugs = player.inventory.get('bugs', [])
+            # bugs.append(self)
 
-            player.inventory['bugs'] = bugs 
-            GAME_BOARD.draw_msg("You've collected the bug! You have %d bugs."%(len(player.inventory['bugs'])))
+            player.inventory['bugs'].append(self)
+            GAME_BOARD.draw_msg("You've collected the enormous, semi-precious bug! You have %d bug in your loot."%(len(player.inventory['bugs'])))
             
         else:
             GAME_BOARD.draw_msg("You need a key to unlock the exhibit and collect the bug!")
+
+class WinStar(GameElement):
+    IMAGE = "Star"
+    SOLID = True
+    COLLECTIBLE = False
+
+class Star(GameElement):
+    IMAGE = "Star"
+    SOLID = True
+    COLLECTIBLE = True
+
+    def interact(self, player):
+        #use for-loop to iterate through inventory.items()
+            #sum items in inventory
+        #divide float(sum) by total number of items to calculate chance of success
+        #automatically proceed with heist, randomly generate win/lose scenario
+        #draw message for player based on outcome
+
+        temp = 0
+        for loot_name, value_list in player.inventory.items():
+            temp += len(value_list)
+        success_likelihood = float(temp)/4
+         
+        if success_likelihood >= random.uniform(0.0, 1.0):
+            self.SOLID = False
+            GAME_BOARD.draw_msg("Bravo! You pulled off the heist! Enjoy your intergalactic treasure in the privacy of your enchanted garden.")
+            draw_win_map()
+        else: 
+            GAME_BOARD.draw_msg("Blinded by greed, you attempted this heist without adequate preperation. Back to jail you go.")
+            draw_prison()
+
+class Rock(GameElement):
+    IMAGE = "Rock"
+    SOLID = False
+    COLLECTIBLE = True
+
+    def interact(self, player):
+
+        player.inventory['rocks'].append(self)
+        GAME_BOARD.draw_msg("Ha hah! You've acquired the moon rock! You have %d moon rock in your loot."%(len(player.inventory['rocks'])))
+
+
+class Boy(GameElement):
+    IMAGE = "Boy"
+    SOLID = True
+    COLLECTIBLE = False
+
+    def interact(self, player):
+        draw_prison()
+        GAME_BOARD.draw_msg("Turns out the sleeping boy was an incognito guard. Let this be a lesson not to talk to strangers in closed museums.")
+
 
 class Gem(GameElement):
     IMAGE = "BlueGem"
@@ -77,20 +140,15 @@ class Gem(GameElement):
     COLLECTIBLE = True
     
     def interact(self, player):
-        player.inventory['gems'] = []
         
-        if len(player.inventory.get('keys', []))> 0:
+        if len(player.inventory.get('keys'))> 0:
             self.SOLID = False
-            gems = player.inventory.get('gems', [])
-            gems.append(self)
 
-            #'gems' is the key, gems is the list of jewels.
-
-            player.inventory['gems'] = gems 
+            player.inventory['gems'].append(self)
             GAME_BOARD.draw_msg("The gem is yours! You have %d gems."%(len(player.inventory['gems'])))
             
         else:
-            GAME_BOARD.draw_msg("You need a key to collect a gem!")
+            GAME_BOARD.draw_msg("You need a key to collect this gem.")
             
 
 
@@ -100,11 +158,9 @@ class Key(GameElement):
     COLLECTIBLE = True
 
     def interact(self, player):
-        keys = player.inventory.get('keys', [])
-        keys.append(self)
 
-        player.inventory['keys'] = keys
-        GAME_BOARD.draw_msg("You stole a key that you found lying on the ground. You have %d keys."%(len(player.inventory['keys'])))
+        player.inventory['keys'].append(self)
+        GAME_BOARD.draw_msg("You stole a key that you found lying on the ground. You have %d key."%(len(player.inventory['keys'])))
 
 
 class Character(GameElement):
@@ -112,8 +168,16 @@ class Character(GameElement):
 
     def __init__(self):
         GameElement.__init__(self)
-        self.inventory = {}
+        self.reset_inventory()
 
+    def reset_inventory(self):
+        self.inventory = {
+            "gems": [],
+            "keys": [],
+            "rocks": [],
+            "bugs": [],
+        }
+        
     def next_pos(self, direction):
         if direction == "up":
             return (self.x, self.y-1)
@@ -124,6 +188,48 @@ class Character(GameElement):
         elif direction == "right":
             return (self.x+1, self.y)
         return None
+
+class Guard(Character):
+    IMAGE = "Horns"
+    SOLID = True
+    COLLECTIBLE = False
+
+    def move_guard(self):
+
+        if DEBUG or GAME_BOARD.current_map_title == "WINNER":
+            return 
+
+        direction = random.choice(["up", "down", "left", "right"])
+        next_x, next_y = self.next_pos(direction)
+
+
+        if next_x in range(GAME_WIDTH) and next_y in range(GAME_HEIGHT):
+
+            existing_el = GAME_BOARD.get_el(next_x, next_y)
+
+            if existing_el is None:
+                GAME_BOARD.del_el(GUARD.x, GUARD.y)
+                GAME_BOARD.set_el(next_x, next_y, GUARD)
+
+    def interact(self, player):
+        
+        draw_prison()
+        GAME_BOARD.draw_msg("Oh no! There are only a few essential employees in the building, but one of them caught you! No more fancy art collecting for you.")
+
+class ShortTree(GameElement):
+    IMAGE = "ShortTree"
+    SOLID = True
+    COLLECTIBLE = False
+
+class GreenGem(GameElement):
+    IMAGE = "GreenGem"
+    SOLID = True
+    COLLECTIBLE = False
+
+class OpenChest(GameElement):
+    IMAGE = "OpenChest"
+    SOLID = True
+    COLLECTIBLE = False
 
 def keyboard_handler():
     direction = None
@@ -141,6 +247,7 @@ def keyboard_handler():
 
 
     if direction:
+        GUARD.move_guard()
         next_location = PLAYER.next_pos(direction)
         next_x = next_location[0]
         next_y = next_location[1]
@@ -156,66 +263,71 @@ def keyboard_handler():
             if existing_el is None or not existing_el.SOLID:
                 ##Get position
                 ##Look at map
-                item = GAME_BOARD.original_map[PLAYER.y][PLAYER.x]
+                item = GAME_BOARD.current_map[PLAYER.y][PLAYER.x]
                 ##see if there is something to redraw
                 
                 GAME_BOARD.del_el(PLAYER.x, PLAYER.y)
+                if item in "^OL":
+                    draw_item(PLAYER.x, PLAYER.y, item)
                 GAME_BOARD.set_el(next_x, next_y, PLAYER)
                 ##redraw if applicible
-              
-                if item in "^OL":
-                    print "not COLLECTIBLE!"
-                    #draw_item(next_x, next_y, item)
-                    draw_board()
 
+def render_board(board_text):
+    '''
+    This will draw any board
+    '''
+    for y in range(len(board_text)):
+        row = board_text[y]
+        for x in range(len(row)):
+            item = board_text[y][x]
+
+            draw_item(x, y, item)
        
-def draw_board():
+def draw_museum():
 
     map_file = open("game_map.txt")
     map_text_lines = map_file.readlines()
-    GAME_BOARD.original_map = map_text_lines
+    GAME_BOARD.current_map = map_text_lines
+    GAME_BOARD.current_map_title = "MUSEUM"
 
-    for y in range(len(map_text_lines)):
-        row = map_text_lines[y]
-        for x in range(len(row)):
-            item = map_text_lines[y][x]
+    render_board(map_text_lines)
 
-            
-            if item == '#':
-                wall = Wall()
-                GAME_BOARD.register(wall)
-                GAME_BOARD.set_el(x, y, wall)
 
-            if item == '^':
-                tree = Tree()
-                GAME_BOARD.register(tree)
-                GAME_BOARD.set_el(x, y, tree)
+    GAME_BOARD.register(PLAYER)
+    GAME_BOARD.set_el(0,3, PLAYER)
 
-            if item == 'O':
-                open_door = DoorOpen()
-                GAME_BOARD.register(open_door)
-                GAME_BOARD.set_el(x, y, open_door)
+    
+    GAME_BOARD.register(GUARD)
+    GAME_BOARD.set_el(5,2, GUARD)
 
-            if item == 'L':
-                closed_door = DoorClosed()
-                GAME_BOARD.register(closed_door)
-                GAME_BOARD.set_el(x, y, closed_door)
+def draw_prison():
 
-            if item == '*':
-                gem = Gem()
-                GAME_BOARD.register(gem)
-                GAME_BOARD.set_el(x, y, gem)
+    prison_file = open("prison_cell.txt")
+    prison_text_lines = prison_file.readlines()
+    GAME_BOARD.current_map = prison_text_lines
+    GAME_BOARD.current_map_title = "PRISON"
 
-            if item == 'K':
-                key = Key()
-                GAME_BOARD.register(key)
-                GAME_BOARD.set_el(x, y, key)
+    render_board(prison_text_lines)
 
-            if item == 'B':
-                bug = Bug()
-                GAME_BOARD.register(bug)
-                GAME_BOARD.set_el(x, y, bug)
+    GAME_BOARD.register(PLAYER)
+    GAME_BOARD.set_el(4,3, PLAYER)
 
+    GAME_BOARD.register(GUARD)
+    GAME_BOARD.set_el(2,3, GUARD)
+
+    PLAYER.reset_inventory()
+
+def draw_win_map():
+
+    win_file = open("win_map.txt")
+    win_text_lines = win_file.readlines()
+    GAME_BOARD.current_map = win_text_lines
+    GAME_BOARD.current_map_title = "WINNER"
+
+    render_board(win_text_lines)
+
+    GAME_BOARD.register(PLAYER)
+    GAME_BOARD.set_el(2,4, PLAYER)
 
 def draw_item(x, y,item):
 
@@ -255,18 +367,63 @@ def draw_item(x, y,item):
         GAME_BOARD.register(bug)
         GAME_BOARD.set_el(x, y, bug)
 
+    if item == '.':
+        GAME_BOARD.del_el(x, y)
+
+    if item == "@":
+        star = Star()
+        GAME_BOARD.register(star)
+        GAME_BOARD.set_el(x, y, star)
+
+    if item == "R":
+        rock = Rock()
+        GAME_BOARD.register(rock)
+        GAME_BOARD.set_el(x, y, rock)
+
+    if item == "Z":
+        boy = Boy()
+        GAME_BOARD.register(boy)
+        GAME_BOARD.set_el(x, y, boy)
+
+    if item == "F":
+        fake_wall = FakeWall()
+        GAME_BOARD.register(fake_wall)
+        GAME_BOARD.set_el(x, y, fake_wall)
+
+    if item == "!":
+        short_tree = ShortTree()
+        GAME_BOARD.register(short_tree)
+        GAME_BOARD.set_el(x, y, short_tree)
+
+    if item == "$":
+        green_gem = GreenGem()
+        GAME_BOARD.register(green_gem)
+        GAME_BOARD.set_el(x, y, green_gem)
+
+    if item == "T":
+        open_chest = OpenChest()
+        GAME_BOARD.register(open_chest)
+        GAME_BOARD.set_el(x, y, open_chest)
+
+    if item == "S":
+        win_star = WinStar()
+        GAME_BOARD.register(win_star)
+        GAME_BOARD.set_el(x, y, win_star)
 
 
 def initialize():
 
-
     global PLAYER
     PLAYER = Character()
-    GAME_BOARD.register(PLAYER)
-    GAME_BOARD.set_el(0,4, PLAYER)
 
-    GAME_BOARD.draw_msg("Princess Game!!!")
+    global GUARD
+    GUARD = Guard()
 
+    draw_museum()
+
+    GAME_BOARD.draw_msg("Museum Heist, Government Shutdown Edition: As a princess with an eye for rare treasure, you decide to 'peruse' the Smithsonian.")
 
     keyboard_handler()
-    draw_board()
+    
+    #draw_prison()
+    #GUARD.move_guard()
